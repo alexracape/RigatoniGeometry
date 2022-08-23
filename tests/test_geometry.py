@@ -7,11 +7,9 @@ import asyncio
 
 import pandas as pd
 import matplotlib
+import rigatoni
 
-from context import rigatoni
-from rigatoni.server import start_server
-import rigatoni.noodle_objects as nooobs
-import rigatoni.geometry.geometry_objects as geoobs
+from context import geometry as geo
 
 # 42 vertices for sphere
 vertices = [[-0.000000, -0.500000, -0.000000], [0.361804, -0.223610, 0.262863],
@@ -65,11 +63,11 @@ def create_spheres(server: rigatoni.Server, context, *args):
     """Test method to create two spheres"""
     
     name = "Test Sphere"
-    material = server.create_component(nooobs.Material, name="Test Material")
+    material = server.create_component(rigatoni.Material, name="Test Material")
 
     # Create Patch
     patches = []
-    patch_info = geoobs.GeometryPatchInput(
+    patch_info = geo.GeometryPatchInput(
         vertices = vertices, 
         indices = indices, 
         index_type = "TRIANGLES",
@@ -79,7 +77,7 @@ def create_spheres(server: rigatoni.Server, context, *args):
     patches.append(rigatoni.geometry.build_geometry_patch(server, name, patch_info))
 
     # Create geometry using patches
-    sphere = server.create_component(nooobs.Geometry, name=name, patches=patches)
+    sphere = server.create_component(rigatoni.Geometry, name=name, patches=patches)
 
     # Set instances and create an entity
     instances = rigatoni.geometry.create_instances(
@@ -94,7 +92,7 @@ def create_spheres(server: rigatoni.Server, context, *args):
 def create_new_instance(server: rigatoni.Server, context, entity_slot, entity_gen, position=None, color=None, rotation=None, scale=None):
     """Method to test instance updating"""
     
-    entity = server.components[nooobs.EntityID(entity_slot, entity_gen)]
+    entity = server.components[rigatoni.EntityID(entity_slot, entity_gen)]
     new_instance = rigatoni.geometry.create_instances(position, color, rotation, scale)
     rigatoni.geometry.add_instances(server, entity, new_instance)
 
@@ -112,18 +110,18 @@ def make_point_plot(server: rigatoni.Server, context, *args):
     """Test Method to generate plot-like render from data.csv"""
 
     name = "Test Plot"
-    material = server.create_component(nooobs.Material, name="Test Material")
+    material = server.create_component(rigatoni.Material, name="Test Material")
 
     # Create patch / geometry for point geometry
     patches = []
-    patch_info = geoobs.GeometryPatchInput(
+    patch_info = geo.GeometryPatchInput(
         vertices = vertices, 
         indices = indices, 
         index_type = "TRIANGLES",
         material = material.id,
         colors = colors)
-    patches.append(rigatoni.geometry.build_geometry_patch(server, name, patch_info))
-    sphere = server.create_component(nooobs.Geometry, name=name, patches=patches)
+    patches.append(geo.build_geometry_patch(server, name, patch_info))
+    sphere = server.create_component(rigatoni.Geometry, name=name, patches=patches)
 
     # Read data from data.csv and normalize
     df = pd.read_csv("/Users/aracape/development/rigatoni/tests/data.csv")
@@ -144,36 +142,36 @@ def make_point_plot(server: rigatoni.Server, context, *args):
     scls = [(i*s, i*s, i*s, i*s) for i in list(df_scaled['FCI_incentive_amount[CNG]'])]
 
     # Create instances of sphere to represent csv data in an entity
-    instances = rigatoni.geometry.create_instances(
+    instances = geo.create_instances(
         positions=[*zip(x, y, z)],
         colors=cols,
         scales=scls
     )
-    entity = rigatoni.geometry.build_entity(server, geometry=sphere, instances=instances)
-    new_instance = rigatoni.geometry.create_instances([[1,1,1]])
-    rigatoni.geometry.add_instances(server, entity, new_instance)
+    entity = geo.build_entity(server, geometry=sphere, instances=instances)
+    new_instance = geo.create_instances([[1,1,1]])
+    geo.add_instances(server, entity, new_instance)
     return 1
 
 
 # define arg documentation for injected method
 instance_args = [
-    nooobs.MethodArg(name="entity_slot", doc="What're you creating an instance of?", editor_hint="ID"),
-    nooobs.MethodArg(name="entity_gen", doc="What're you creating an instance of?", editor_hint="ID"),
-    nooobs.MethodArg(name="position", doc="Where are you putting this instance", editor_hint="Vector"),
-    nooobs.MethodArg(name="color", doc="What color is this instance?", editor_hint="RGBA Vector"),
-    nooobs.MethodArg(name="rotation", doc="How is this instance rotated?", editor_hint="Vector"),
-    nooobs.MethodArg(name="scale", doc="How is this instance scaled?", editor_hint="Vector")
+    rigatoni.MethodArg(name="entity_slot", doc="What're you creating an instance of?", editor_hint="ID"),
+    rigatoni.MethodArg(name="entity_gen", doc="What're you creating an instance of?", editor_hint="ID"),
+    rigatoni.MethodArg(name="position", doc="Where are you putting this instance", editor_hint="Vector"),
+    rigatoni.MethodArg(name="color", doc="What color is this instance?", editor_hint="RGBA Vector"),
+    rigatoni.MethodArg(name="rotation", doc="How is this instance rotated?", editor_hint="Vector"),
+    rigatoni.MethodArg(name="scale", doc="How is this instance scaled?", editor_hint="Vector")
 ]
 
 # Define starting state
 starting_state = [
-    nooobs.StartingComponent(nooobs.Method, {"name": "new_point_plot", "arg_doc": []}, make_point_plot),
-    nooobs.StartingComponent(nooobs.Method, {"name": "create_new_instance", "arg_doc": [*instance_args]}, create_new_instance),
-    nooobs.StartingComponent(nooobs.Method, {"name": "create_sphere", "arg_doc": []}, create_spheres)
+    rigatoni.StartingComponent(rigatoni.Method, {"name": "new_point_plot", "arg_doc": []}, make_point_plot),
+    rigatoni.StartingComponent(rigatoni.Method, {"name": "create_new_instance", "arg_doc": [*instance_args]}, create_new_instance),
+    rigatoni.StartingComponent(rigatoni.Method, {"name": "create_sphere", "arg_doc": []}, create_spheres)
 ]
 
 def main():
-    asyncio.run(start_server(50000, starting_state))
+    asyncio.run(rigatoni.start_server(50000, starting_state))
 
 if __name__ == "__main__":
     main()

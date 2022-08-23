@@ -20,12 +20,14 @@ classifiers = [
 dependencies = [
     "websockets",
     "cbor2",
-    "pydantic"
+    "pydantic",
+    "rigatoni",
+    "numpy"
 ]
 
 [project.optional-dependencies]
-geometry = [
-    "numpy"
+meshes = [
+    "pymesh"
 ]
 
 [project.urls]

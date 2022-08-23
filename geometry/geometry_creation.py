@@ -2,10 +2,9 @@
 from typing import Tuple
 import numpy as np
 
-from .. import noodle_objects as nooobs
-from . import geometry_objects as geoobs
-from .. import core 
+import rigatoni
 
+from .geometry_objects import AttributeInput, GeometryPatchInput
 
 SIZES = {
     # in bytes
@@ -38,12 +37,12 @@ def get_format(num_vertices: int) -> str:
         return 'U32'
 
 
-def set_up_attributes(input: geoobs.GeometryPatchInput):
+def set_up_attributes(input: GeometryPatchInput):
     """Constructs attribute info from input lists"""
 
     # Add attribute info based on the input lists
     attribute_info = [] 
-    position = geoobs.AttributeInput(
+    position = AttributeInput(
         semantic = "POSITION",
         format = "VEC3",
         normalized = False,
@@ -51,7 +50,7 @@ def set_up_attributes(input: geoobs.GeometryPatchInput):
     attribute_info.append(position)
 
     if input.normals:
-        normal = geoobs.AttributeInput(
+        normal = AttributeInput(
             semantic = "NORMAL",
             format = "VEC3",
             normalized = False,
@@ -59,7 +58,7 @@ def set_up_attributes(input: geoobs.GeometryPatchInput):
         attribute_info.append(normal)
 
     if input.tangents:
-        tangent = geoobs.AttributeInput(
+        tangent = AttributeInput(
             semantic = "TANGENT",
             format = "VEC3",
             normalized = False,
@@ -67,7 +66,7 @@ def set_up_attributes(input: geoobs.GeometryPatchInput):
         attribute_info.append(tangent)
 
     if input.textures:
-        texture = geoobs.AttributeInput(
+        texture = AttributeInput(
             semantic = "TEXTURE",
             format = "U16VEC2",
             normalized = True,
@@ -75,7 +74,7 @@ def set_up_attributes(input: geoobs.GeometryPatchInput):
         attribute_info.append(texture)
 
     if input.colors:
-        color = geoobs.AttributeInput(
+        color = AttributeInput(
             semantic = "COLOR",
             format = "U8VEC4",
             normalized = True,
@@ -95,8 +94,8 @@ def set_up_attributes(input: geoobs.GeometryPatchInput):
     return attribute_info
 
             
-def build_geometry_buffer(server: core.Server, name, input: geoobs.GeometryPatchInput, 
-    index_format: str, attribute_info: list[geoobs.AttributeInput]) -> Tuple[nooobs.Buffer, int]:
+def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInput, 
+    index_format: str, attribute_info: list[AttributeInput]) -> Tuple[rigatoni.Buffer, int]:
 
     format_map = {
         "U8": np.int8,
@@ -132,7 +131,7 @@ def build_geometry_buffer(server: core.Server, name, input: geoobs.GeometryPatch
         raise Exception("TOO BIG")
     else:
         buffer = server.create_component(
-            nooobs.Buffer,
+            rigatoni.Buffer,
             name = name,
             size = size,
             inline_bytes = buffer_bytes
@@ -140,7 +139,7 @@ def build_geometry_buffer(server: core.Server, name, input: geoobs.GeometryPatch
         return buffer, index_offset
 
 
-def build_geometry_patch(server: core.Server, name: str, input: geoobs.GeometryPatchInput):
+def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatchInput):
 
 
     vert_count = len(input.vertices)
@@ -151,12 +150,12 @@ def build_geometry_patch(server: core.Server, name: str, input: geoobs.GeometryP
     attribute_info = set_up_attributes(input)
 
     # Build buffer with given lists
-    buffer: nooobs.Buffer
+    buffer: rigatoni.Buffer
     buffer, index_offset = build_geometry_buffer(server, name, input, index_format, attribute_info)
 
     # Make buffer component
-    buffer_view: nooobs.BufferView = server.create_component(
-        nooobs.BufferView,
+    buffer_view: rigatoni.BufferView = server.create_component(
+        rigatoni.BufferView,
         name = name,
         source_buffer = buffer.id,
         type = "GEOMETRY",
@@ -167,11 +166,11 @@ def build_geometry_patch(server: core.Server, name: str, input: geoobs.GeometryP
     # Create attribute objects from buffer view and attribute info
     attributes = []
     for attribute in attribute_info:
-        attr_obj = nooobs.Attribute(view=buffer_view.id, **dict(attribute))
+        attr_obj = rigatoni.Attribute(view=buffer_view.id, **dict(attribute))
         attributes.append(attr_obj)
 
     # Make index to describe indices at end of buffer
-    index = nooobs.Index(
+    index = rigatoni.Index(
         view = buffer_view.id,
         count = index_count,
         offset = index_offset,
@@ -179,7 +178,7 @@ def build_geometry_patch(server: core.Server, name: str, input: geoobs.GeometryP
     )
 
     # Finally create patch 
-    patch = nooobs.GeometryPatch(
+    patch = rigatoni.GeometryPatch(
         attributes = attributes, 
         vertex_count = vert_count, 
         indices = index, 
@@ -190,13 +189,13 @@ def build_geometry_patch(server: core.Server, name: str, input: geoobs.GeometryP
     return patch
 
 
-def build_instance_buffer(server, name, matrices) -> nooobs.Buffer:
+def build_instance_buffer(server, name, matrices) -> rigatoni.Buffer:
     """Build MAT4 Buffer"""
     
     buffer_bytes = np.array(matrices, dtype=np.single).tobytes(order='C')
 
     buffer = server.create_component(
-        nooobs.Buffer,
+        rigatoni.Buffer,
         name = f"Instance buffer for {name}",
         size = len(buffer_bytes),
         inline_bytes = buffer_bytes
@@ -207,7 +206,7 @@ def build_instance_buffer(server, name, matrices) -> nooobs.Buffer:
     return buffer
 
 
-def build_entity(server: core.Server, geometry: nooobs.Geometry, instances: nooobs.Mat4=None):
+def build_entity(server: rigatoni.Server, geometry: rigatoni.Geometry, instances: rigatoni.Mat4=None):
     """Build Entity from Geometry
     
     Can specify instances here or add later with create_instances
@@ -218,20 +217,20 @@ def build_entity(server: core.Server, geometry: nooobs.Geometry, instances: nooo
     if instances:
         buffer = build_instance_buffer(server, name, instances)
         buffer_view = server.create_component(
-            nooobs.BufferView,
+            rigatoni.BufferView,
             name = f"Instance View for {name}",
             source_buffer = buffer.id,
             type = "UNK",
             offset = 0,
             length = buffer.size
         )
-        instance = nooobs.InstanceSource(view=buffer_view.id, stride=0, bb=None)
+        instance = rigatoni.InstanceSource(view=buffer_view.id, stride=0, bb=None)
     else:
         instance = None
 
-    rep = nooobs.RenderRepresentation(mesh=geometry.id, instances=instance)
+    rep = rigatoni.RenderRepresentation(mesh=geometry.id, instances=instance)
 
-    entity = server.create_component(nooobs.Entity, name=name, render_rep=rep)
+    entity = server.create_component(rigatoni.Entity, name=name, render_rep=rep)
     
     return entity
 
@@ -244,10 +243,10 @@ def padded(lst: list):
 
 
 def create_instances(
-    positions: list[nooobs.Vec3] = [], 
-    colors: list[nooobs.Vec4] = [], 
-    rotations: list[nooobs.Vec4] = [], 
-    scales: list[nooobs.Vec3] = []):
+    positions: list[rigatoni.Vec3] = [], 
+    colors: list[rigatoni.Vec4] = [], 
+    rotations: list[rigatoni.Vec4] = [], 
+    scales: list[rigatoni.Vec3] = []):
     """Create new instances for an entity
     
     All lists are optional and will be filled with defaults
@@ -274,7 +273,7 @@ def create_instances(
     return instances
 
 
-def update_entity(server: core.Server, entity: nooobs.Entity, geometry: nooobs.Geometry=None, instances: list=None):
+def update_entity(server: rigatoni.Server, entity: rigatoni.Entity, geometry: rigatoni.Geometry=None, instances: list=None):
     
     name = entity.name if entity.name else None
 
@@ -292,19 +291,19 @@ def update_entity(server: core.Server, entity: nooobs.Entity, geometry: nooobs.G
     if instances:
         buffer = build_instance_buffer(server, name, instances)
         buffer_view = server.create_component(
-            nooobs.BufferView,
+            rigatoni.BufferView,
             name = f"Instance View for {name}",
             source_buffer = buffer.id,
             type = "UNK",
             offset = 0,
             length = buffer.size
         )
-        instance = nooobs.InstanceSource(view=buffer_view.id, stride=0, bb=None)
+        instance = rigatoni.InstanceSource(view=buffer_view.id, stride=0, bb=None)
     else:
         instance = old_rep.instances
 
     # Create new render rep for entity and update entity
-    rep = nooobs.RenderRepresentation(mesh=mesh, instances=instance)
+    rep = rigatoni.RenderRepresentation(mesh=mesh, instances=instance)
     entity.render_rep = rep
     entity = server.update_component(entity)
 
@@ -318,7 +317,7 @@ def update_entity(server: core.Server, entity: nooobs.Entity, geometry: nooobs.G
     return entity
 
 
-def add_instances(server: core.Server, entity: nooobs.Entity, instances: list):
+def add_instances(server: rigatoni.Server, entity: rigatoni.Entity, instances: list):
     
     try:
         rep = entity.render_rep
@@ -326,8 +325,8 @@ def add_instances(server: core.Server, entity: nooobs.Entity, instances: list):
         raise Exception("Entity isn't renderable")
 
     if rep:
-        old_view: nooobs.BufferView = server.components[rep.instances.view]
-        old_buffer: nooobs.Buffer = server.components[old_view.source_buffer]
+        old_view: rigatoni.BufferView = server.components[rep.instances.view]
+        old_buffer: rigatoni.Buffer = server.components[old_view.source_buffer]
         old_instances = np.frombuffer(old_buffer.inline_bytes, dtype=np.single)
         print(f"Old instances from buffer: {old_instances}")
         combined = np.append(old_instances, instances)
