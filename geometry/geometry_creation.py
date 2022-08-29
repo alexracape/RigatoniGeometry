@@ -1,6 +1,7 @@
 """Module for assisting with the creation of geometry objects"""
-from typing import Tuple
+from typing import Optional, Tuple
 import numpy as np
+import meshio
 
 import rigatoni
 
@@ -128,7 +129,14 @@ def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInp
     size = len(buffer_bytes)
     if size > 1000:
         # TODO - uri bytes
-        raise Exception("TOO BIG")
+        # raise Exception("TOO BIG")
+        buffer = server.create_component(
+            rigatoni.Buffer,
+            name = name,
+            size = size,
+            inline_bytes = buffer_bytes
+        )
+        return buffer, index_offset
     else:
         buffer = server.create_component(
             rigatoni.Buffer,
@@ -332,3 +340,25 @@ def add_instances(server: rigatoni.Server, entity: rigatoni.Entity, instances: l
         combined = np.append(old_instances, instances)
 
     update_entity(server, entity, instances=combined.tolist())
+
+
+def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Material, mesh_name: Optional[str]=None):
+    
+    # Create meshio mesh object to extract data from file
+    mesh = meshio.read(file)
+    vertices = mesh.points.tolist()
+    indices = mesh.cells[0].data.tolist()
+
+    # Create patch / geometry for point geometry
+    patches = []
+    patch_info = GeometryPatchInput(
+        vertices = vertices, 
+        indices = indices, 
+        index_type = "TRIANGLES",
+        material = material.id)
+    patches.append(build_geometry_patch(server, mesh_name, patch_info))
+    geometry = server.create_component(rigatoni.Geometry, name=mesh_name, patches=patches)
+
+    return geometry
+    
+

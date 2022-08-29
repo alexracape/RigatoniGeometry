@@ -152,6 +152,21 @@ def make_point_plot(server: rigatoni.Server, context, *args):
     geo.add_instances(server, entity, new_instance)
     return 1
 
+def create_from_mesh(server: rigatoni.Server, context, *args):
+    """Test Method to generate render from mesh"""
+
+    name = "Test Plot"
+    material = server.create_component(rigatoni.Material, name="Test Material")
+
+    # use libraries from mesh option    
+    mesh = geo.geometry_from_mesh(server, "/Users/aracape/development/geometry_tools/tests/stanford-bunny.obj", material)
+
+    # Create instances of sphere to represent csv data in an entity
+    instances = geo.create_instances()
+    entity = geo.build_entity(server, geometry=mesh, instances=instances)
+    return 1
+
+
 
 # define arg documentation for injected method
 instance_args = [
@@ -167,7 +182,8 @@ instance_args = [
 starting_state = [
     rigatoni.StartingComponent(rigatoni.Method, {"name": "new_point_plot", "arg_doc": []}, make_point_plot),
     rigatoni.StartingComponent(rigatoni.Method, {"name": "create_new_instance", "arg_doc": [*instance_args]}, create_new_instance),
-    rigatoni.StartingComponent(rigatoni.Method, {"name": "create_sphere", "arg_doc": []}, create_spheres)
+    rigatoni.StartingComponent(rigatoni.Method, {"name": "create_sphere", "arg_doc": []}, create_spheres),
+    rigatoni.StartingComponent(rigatoni.Method, {"name": "create_from_mesh", "arg_doc": []}, create_from_mesh)
 ]
 
 def main():

@@ -27,7 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 meshes = [
-    "pymesh"
+    "meshio"
 ]
 
 [project.urls]
