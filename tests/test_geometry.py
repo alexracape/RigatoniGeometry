@@ -86,6 +86,7 @@ def create_spheres(server: rigatoni.Server, context, *args):
         rotations=[(45, 20, 0, 0)]
     )
     entity = rigatoni.geometry.build_entity(server, geometry=sphere, instances=instances)
+    geo.export_mesh(server, sphere, "test_sphere.obj")
     return 1
 
 
@@ -164,6 +165,9 @@ def create_from_mesh(server: rigatoni.Server, context, *args):
     # Create instances of sphere to represent csv data in an entity
     instances = geo.create_instances()
     entity = geo.build_entity(server, geometry=mesh, instances=instances)
+
+    # Test export
+    geo.export_mesh(server, mesh, "test_mesh.obj")
     return 1
 
 
