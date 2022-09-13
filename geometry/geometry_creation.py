@@ -6,6 +6,7 @@ import meshio
 import rigatoni
 
 from .geometry_objects import AttributeInput, GeometryPatchInput
+from .byte_server import ByteServer
 
 SIZES = {
     # in bytes
@@ -20,6 +21,19 @@ SIZES = {
     "MAT3": 36,
     "MAT4": 64
 }
+
+FORMAT_MAP = {
+        "U8": np.int8,
+        "U16": np.int16,
+        "U32": np.int32,
+        "U8VEC4": np.int8,
+        "U16VEC2": np.int16,
+        "VEC2": np.single,
+        "VEC3": np.single,
+        "VEC4": np.single,
+        "MAT3": np.single,
+        "MAT4": np.single
+    }
 
 DEFAULT_POSITION = [0.0, 0.0, 0.0, 0.0]
 DEFAULT_COLOR = [1.0, 1.0, 1.0, 1.0]
@@ -96,20 +110,7 @@ def set_up_attributes(input: GeometryPatchInput):
 
             
 def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInput, 
-    index_format: str, attribute_info: list[AttributeInput]) -> Tuple[rigatoni.Buffer, int]:
-
-    format_map = {
-        "U8": np.int8,
-        "U16": np.int16,
-        "U32": np.int32,
-        "U8VEC4": np.int8,
-        "U16VEC2": np.int16,
-        "VEC2": np.single,
-        "VEC3": np.single,
-        "VEC4": np.single,
-        "MAT3": np.single,
-        "MAT4": np.single
-    }
+    index_format: str, attribute_info: list[AttributeInput], byte_server: ByteServer) -> Tuple[rigatoni.Buffer, int]:
 
     # Build the buffer
     data = [x for x in [input.vertices, input.normals, input.tangents, input.textures, input.colors] if x]
@@ -118,23 +119,23 @@ def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInp
     for point in points:
         for info, attr in zip(point, attribute_info):
 
-            attr_size = format_map[attr.format]
+            attr_size = FORMAT_MAP[attr.format]
             new_bytes = np.array(info, dtype=attr_size).tobytes(order='C')
             buffer_bytes.extend(new_bytes)
 
     index_offset = len(buffer_bytes)
-    index_bytes = np.array(input.indices, dtype=format_map[index_format]).tobytes(order='C')
+    index_bytes = np.array(input.indices, dtype=FORMAT_MAP[index_format]).tobytes(order='C')
     buffer_bytes.extend(index_bytes)
 
     size = len(buffer_bytes)
     if size > 1000:
-        # TODO - uri bytes
-        # raise Exception("TOO BIG")
+        print(f"Large Mesh: Using URI Bytes")
+        uri = byte_server.add_buffer(buffer_bytes)
         buffer = server.create_component(
             rigatoni.Buffer,
             name = name,
             size = size,
-            inline_bytes = buffer_bytes
+            uri_bytes = uri
         )
         return buffer, index_offset
     else:
@@ -147,8 +148,12 @@ def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInp
         return buffer, index_offset
 
 
-def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatchInput):
-
+def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatchInput, 
+    byte_server: ByteServer=None):
+    """Build a Geometry Patch with related buffers and views
+    
+    Specify a byte server if its a big mesh
+    """
 
     vert_count = len(input.vertices)
     index_count = len(input.indices) * len(input.indices[0])
@@ -159,7 +164,7 @@ def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatc
 
     # Build buffer with given lists
     buffer: rigatoni.Buffer
-    buffer, index_offset = build_geometry_buffer(server, name, input, index_format, attribute_info)
+    buffer, index_offset = build_geometry_buffer(server, name, input, index_format, attribute_info, byte_server)
 
     # Make buffer component
     buffer_view: rigatoni.BufferView = server.create_component(
@@ -342,12 +347,24 @@ def add_instances(server: rigatoni.Server, entity: rigatoni.Entity, instances: l
     update_entity(server, entity, instances=combined.tolist())
 
 
-def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Material, mesh_name: Optional[str]=None):
+# Mesh Importing
+def meshlab_load(server: rigatoni.Server, byte_server: ByteServer, file, 
+    material: rigatoni.Material, mesh_name: Optional[str]=None):
+    import pymeshlab
     
-    # Create meshio mesh object to extract data from file
-    mesh = meshio.read(file)
-    vertices = mesh.points.tolist()
-    indices = mesh.cells[0].data.tolist()
+    ms = pymeshlab.MeshSet()
+
+    ms.load_new_mesh(file)
+    mesh = ms.current_mesh()
+    #mesh.compute_normal_per_vertex("Simple Average")
+
+    # Extract data from mesh set structure
+    vertices = mesh.vertex_matrix().tolist()
+    indices = mesh.face_matrix().tolist()
+    normals = mesh.vertex_normal_matrix().tolist()
+    tangents = None
+    textures = None
+    colors = mesh.vertex_color_array().tolist()
 
     # Create patch / geometry for point geometry
     patches = []
@@ -355,10 +372,120 @@ def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Materia
         vertices = vertices, 
         indices = indices, 
         index_type = "TRIANGLES",
-        material = material.id)
-    patches.append(build_geometry_patch(server, mesh_name, patch_info))
+        material = material.id,
+        normals = normals,
+        tangents = tangents,
+        textures = textures,
+        colors = colors)
+    patches.append(build_geometry_patch(server, mesh_name, patch_info, byte_server))
+    geometry = server.create_component(rigatoni.Geometry, name=mesh_name, patches=patches)
+
+    return geometry
+
+
+def get_point_attr(mesh, attr: str):
+    """Helper to get attribute from mesh object"""
+
+    data = mesh.point_data.get(attr)
+    try:
+        return data.tolist()
+    except:
+        return data
+
+
+def get_triangles(mesh):
+    """Helper to get attribute from mesh object"""
+
+    for cell in mesh.cells:
+        if cell.type == "triangle":
+            return cell.data.tolist()
+    return None
+
+
+def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Material, 
+    mesh_name: Optional[str]=None, byte_server: ByteServer=None):
+    """Construct geometry from mesh file
+    
+    Can specify byte server if it is a big mesh and needs uri bytes
+    """
+    
+    # Create meshio mesh object to extract data from file, if unsupported file type use meshlab
+    try: 
+        mesh = meshio.read(file)
+    except:
+        return meshlab_load(server, byte_server, file, material, mesh_name) 
+    
+    vertices = mesh.points.tolist()
+    indices = get_triangles(mesh)
+
+    # I think attribute name is gonna be specific to mesh - how to map to right attribute?
+    normals = get_point_attr(mesh, "NORMAL")
+    tangents = get_point_attr(mesh, "TANGENT")
+    textures = get_point_attr(mesh, "TEXTURE")
+    colors = get_point_attr(mesh, "COLOR")
+
+    # Create patch / geometry for point geometry
+    patches = []
+    patch_info = GeometryPatchInput(
+        vertices = vertices, 
+        indices = indices, 
+        index_type = "TRIANGLES",
+        material = material.id,
+        normals = normals,
+        tangents = tangents,
+        textures = textures,
+        colors = colors)
+    patches.append(build_geometry_patch(server, mesh_name, patch_info, byte_server))
     geometry = server.create_component(rigatoni.Geometry, name=mesh_name, patches=patches)
 
     return geometry
     
 
+def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_name: str):
+    """Interface to export noodles geometry to mesh file"""
+
+    points = []
+    indices = []
+    point_data = {}
+    for patch in geometry.patches:
+
+        # Extract info from patch
+        index = patch.indices
+        view: rigatoni.BufferView = server.get_component(index.view)
+        bytes = server.get_component(view.source_buffer).inline_bytes
+
+        # Get indicies
+        raw_indices = np.frombuffer(bytes, dtype=FORMAT_MAP[index.format], count=index.count, offset=index.offset)
+        grouped = [list(x) for x in zip(*(iter(raw_indices),) * 3)]
+        indices.extend(grouped)
+
+        # Get Attributes, positions and any others
+        attribute_bytes  = bytes[:index.offset]
+
+        i = 0
+        while i < len(attribute_bytes):
+            for attribute in patch.attributes:
+                format = attribute.format
+                current_chunk = attribute_bytes[i:i + SIZES[format]]
+                attr_name = attribute.semantic
+                attr_data = np.frombuffer(current_chunk, dtype=FORMAT_MAP[format]).tolist()
+                i += SIZES[format]
+                if attr_name == "POSITION":
+                    points.append(attr_data)
+                else:
+                    point_data.setdefault(attr_name,[]).append(attr_data) 
+            print(f"{i}/{len(attribute_bytes)}")
+
+    mesh = meshio.Mesh(
+        points,
+        [("triangle", indices)],
+        point_data = point_data
+    )
+
+    mesh.write(new_file_name)
+
+
+def normal_generator(vertices: list[list], indices: list[list]):
+
+    normals = []
+    return normals

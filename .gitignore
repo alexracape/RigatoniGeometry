@@ -1,4 +1,7 @@
-# Standard from Github
+# Added...
+*.x3d
+mesh-env/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

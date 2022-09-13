@@ -56,7 +56,7 @@ indices =  [[0, 13, 12],  [1, 13, 15],  [0, 12, 17],  [0, 17, 19],
             [17, 12, 18], [12, 2, 18],  [15, 16, 5],  [15, 13, 16],
             [13, 0, 16],  [12, 14, 2],  [12, 13, 14], [13, 1, 14]]
 
-colors = [[255, 255, 255, 255]] * 42
+colors = [[0, 255, 0, 255]] * 42
 
 
 def create_spheres(server: rigatoni.Server, context, *args):
@@ -86,6 +86,7 @@ def create_spheres(server: rigatoni.Server, context, *args):
         rotations=[(45, 20, 0, 0)]
     )
     entity = rigatoni.geometry.build_entity(server, geometry=sphere, instances=instances)
+    geo.export_mesh(server, sphere, "test_sphere.vtk")
     return 1
 
 
@@ -159,11 +160,18 @@ def create_from_mesh(server: rigatoni.Server, context, *args):
     material = server.create_component(rigatoni.Material, name="Test Material")
 
     # use libraries from mesh option    
-    mesh = geo.geometry_from_mesh(server, "/Users/aracape/development/geometry_tools/tests/stanford-bunny.obj", material)
+    uri_server = geo.ByteServer(port=40000)
+    mesh = geo.geometry_from_mesh(server, "/Users/aracape/development/geometry_tools/tests/stanford-bunny.obj", material, name, uri_server)
+    #mesh = geo.geometry_from_mesh(server, "/Users/aracape/development/test_sphere.vtk", material)
+    #mesh = geo.geometry_from_mesh(server, "/Users/aracape/development/geometry_tools/tests/magvort.x3d", material)
+
 
     # Create instances of sphere to represent csv data in an entity
     instances = geo.create_instances()
     entity = geo.build_entity(server, geometry=mesh, instances=instances)
+
+    # Test export
+    geo.export_mesh(server, mesh, "test_mesh.obj")
     return 1
 
 
