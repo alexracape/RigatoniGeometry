@@ -16,7 +16,7 @@ class ByteServer(object):
         self.socket = None
         self.buffers = {}
         self.next_tag = 0
-        self.url = f""
+        self.url = f"http://{host}:{port}"
         self.thread = threading.Thread(target=self.run, args=())
 
         self.thread.start()
@@ -28,16 +28,28 @@ class ByteServer(object):
         return str(tag)
 
 
+    def get_buffer(self, uri: str):
+        """Helper to get bytes for a uri"""
+
+        m = re.search(f'(?<={self.port}\/).+\Z', uri)
+        if m:
+            tag = m.group(0)
+            bytes = self.buffers[tag]
+            return bytes
+        else:
+            raise Exception("Invalid HTTP Request")
+        
+
+
     def run(self):
 
         # Create socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket = server_socket
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        hostname = socket.gethostname()
-        addr = socket.gethostbyname(hostname)
+        server_socket.bind((self.host, self.port))
 
-        server_socket.bind((addr, self.port))
+        self.socket = server_socket
+
         server_socket.listen(1)
         print(f'Listening on port {self.port} ...')
 
@@ -53,12 +65,13 @@ class ByteServer(object):
             # Try to get tag from request with regex
             m = re.search('(?<=GET \/)(.+?)(?= HTTP)', request)
             if m:
-                tag = m.group(1)
+                tag = m.group(0)
             else:
                 raise Exception("Invalid HTTP Request")
 
             # Send HTTP response
             response = self.buffers[tag]
+            print(f"Response:\n{response}")
             client_connection.sendall(response)
             client_connection.close()
 
@@ -68,7 +81,7 @@ class ByteServer(object):
 
         tag = self.get_tag()
         self.buffers[tag] = buffer
-        url = f"{self.socket.gethostname()}/{tag}"
+        url = f"{self.url}/{tag}"
         print(f"Buffer URL: {url}")
 
         return url
@@ -81,10 +94,9 @@ class ByteServer(object):
 
 def main():
 
-    buff = rigatoni.Buffer(id=BufferID(0,0), name="bro", inline_bytes=b'HELLO')
+    server = ByteServer(port=50000)
+    server.add_buffer(b'TEST')
 
-    server = ByteServer()
-    server.run()
 
 
 if __name__ == "__main__":

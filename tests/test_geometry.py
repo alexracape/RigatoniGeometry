@@ -107,6 +107,7 @@ def normalize_df(df: pd.DataFrame):
 
     return normalized_df
 
+
 def make_point_plot(server: rigatoni.Server, context, *args):
     """Test Method to generate plot-like render from data.csv"""
 
@@ -153,6 +154,7 @@ def make_point_plot(server: rigatoni.Server, context, *args):
     geo.add_instances(server, entity, new_instance)
     return 1
 
+
 def create_from_mesh(server: rigatoni.Server, context, *args):
     """Test Method to generate render from mesh"""
 
@@ -171,7 +173,7 @@ def create_from_mesh(server: rigatoni.Server, context, *args):
     entity = geo.build_entity(server, geometry=mesh, instances=instances)
 
     # Test export
-    geo.export_mesh(server, mesh, "test_mesh.obj")
+    geo.export_mesh(server, mesh, "test_mesh.obj", uri_server)
     return 1
 
 

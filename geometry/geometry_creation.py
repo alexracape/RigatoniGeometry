@@ -441,7 +441,7 @@ def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Materia
     return geometry
     
 
-def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_name: str):
+def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_name: str, byte_server: ByteServer=None):
     """Interface to export noodles geometry to mesh file"""
 
     points = []
@@ -452,7 +452,15 @@ def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_n
         # Extract info from patch
         index = patch.indices
         view: rigatoni.BufferView = server.get_component(index.view)
-        bytes = server.get_component(view.source_buffer).inline_bytes
+        buffer = server.get_component(view.source_buffer)
+        inline, uri = buffer.inline_bytes, buffer.uri_bytes
+        if inline:
+            bytes = inline
+        else:
+            try:
+                bytes = byte_server.get_buffer(uri)
+            except:
+                raise Exception("No byte server specified for uri byte mesh")
 
         # Get indicies
         raw_indices = np.frombuffer(bytes, dtype=FORMAT_MAP[index.format], count=index.count, offset=index.offset)
