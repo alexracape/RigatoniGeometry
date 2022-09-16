@@ -42,7 +42,11 @@ DEFAULT_SCALE = [1.0, 1.0, 1.0, 0.0]
 
 
 def get_format(num_vertices: int) -> str:
-    """Helper to get format that can accomadate number of vertices"""
+    """Helper to get format that can accomadate number of vertices
+    
+    Args:
+        num_vertices (int): number of vertices needed to store in mesh
+    """
 
     if num_vertices < 256:
         return 'U8'
@@ -53,7 +57,16 @@ def get_format(num_vertices: int) -> str:
 
 
 def set_up_attributes(input: GeometryPatchInput):
-    """Constructs attribute info from input lists"""
+    """Constructs attribute info from input type
+    
+    Takes list input and constructs objects 
+    that can be used in build_geometry_patch
+
+    Args:
+        input (GeometryPatchInput): stores lists of vertices, indices
+            index type, material, and possibly normals, tangents,
+            textures, and colors
+    """
 
     # Add attribute info based on the input lists
     attribute_info = [] 
@@ -110,23 +123,36 @@ def set_up_attributes(input: GeometryPatchInput):
 
             
 def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInput, 
-    index_format: str, attribute_info: list[AttributeInput], byte_server: ByteServer) -> Tuple[rigatoni.Buffer, int]:
+    index_format: str, attribute_info: list[AttributeInput], byte_server: ByteServer=None) -> Tuple[rigatoni.Buffer, int]:
+    """Builds a buffer component
 
-    # Build the buffer
+    Args:
+        server (Server): server to create component on
+        name (str): name to give component
+        input (GeometryPatchInput): lists of attributes and point data 
+        index_format (str): format the indices should take
+        attribute_info (list[AttributeInput]): Info on the attributes, mostly used for formatting
+        byte_server (ByteServer): byte server to use if needed
+    """
+
+    # Filter out inputs unspecified by user, and group attributes by point
     data = [x for x in [input.vertices, input.normals, input.tangents, input.textures, input.colors] if x]
-    buffer_bytes = bytearray(0)
     points = zip(*data)
+
+    # Build byte array by iteating through points and their attributes
+    buffer_bytes = bytearray(0)
     for point in points:
         for info, attr in zip(point, attribute_info):
-
             attr_size = FORMAT_MAP[attr.format]
             new_bytes = np.array(info, dtype=attr_size).tobytes(order='C')
             buffer_bytes.extend(new_bytes)
 
+    # Add index bytes to byte array
     index_offset = len(buffer_bytes)
     index_bytes = np.array(input.indices, dtype=FORMAT_MAP[index_format]).tobytes(order='C')
     buffer_bytes.extend(index_bytes)
 
+    # Create buffer component using uri bytes if needed
     size = len(buffer_bytes)
     if size > 1000:
         print(f"Large Mesh: Using URI Bytes")
@@ -149,12 +175,17 @@ def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInp
 
 
 def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatchInput, 
-    byte_server: ByteServer=None):
+    byte_server: ByteServer=None) -> rigatoni.GeometryPatch:
     """Build a Geometry Patch with related buffers and views
     
-    Specify a byte server if its a big mesh
+    Args:
+        server (Server): server to create components on
+        name (str): name for the components
+        input (GeometryPatch): input lists with data to create the patch
+        byte_server (ByteServer): optional server to use if mesh is larger than 1Kb
     """
 
+    # Set up some constants
     vert_count = len(input.vertices)
     index_count = len(input.indices) * len(input.indices[0])
     index_format = get_format(vert_count)            
@@ -166,7 +197,7 @@ def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatc
     buffer: rigatoni.Buffer
     buffer, index_offset = build_geometry_buffer(server, name, input, index_format, attribute_info, byte_server)
 
-    # Make buffer component
+    # Make buffer view component
     buffer_view: rigatoni.BufferView = server.create_component(
         rigatoni.BufferView,
         name = name,
@@ -202,8 +233,14 @@ def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatc
     return patch
 
 
-def build_instance_buffer(server, name, matrices) -> rigatoni.Buffer:
-    """Build MAT4 Buffer"""
+def build_instance_buffer(server: rigatoni.Server, name: str, matrices: rigatoni.Mat4) -> rigatoni.Buffer:
+    """Build Buffer from Mat4 to Represent Instances
+    
+    Args:
+        server (Server): server to put buffer component on
+        name (str): name for the buffer
+        matrices (Mat4): instance matrices
+    """
     
     buffer_bytes = np.array(matrices, dtype=np.single).tobytes(order='C')
 
@@ -214,19 +251,22 @@ def build_instance_buffer(server, name, matrices) -> rigatoni.Buffer:
         inline_bytes = buffer_bytes
     )
 
-    #print(f"100th Instance: {np.frombuffer(buffer_bytes[6400:6464], dtype=np.single)}")
-
     return buffer
 
 
-def build_entity(server: rigatoni.Server, geometry: rigatoni.Geometry, instances: rigatoni.Mat4=None):
+def build_entity(server: rigatoni.Server, geometry: rigatoni.Geometry, instances: list[rigatoni.Mat4]=None):
     """Build Entity from Geometry
     
-    Can specify instances here or add later with create_instances
+    Args:
+        server (Server): server to build entity component on
+        geometry (Geometry): geometry to link entity to
+        instances (Mat4): optional instance matrix, can use create_instances to generate
     """
 
+    # Set name to match geometry
     name = geometry.name if geometry.name else None
 
+    # Create instance buffer and view if specified
     if instances:
         buffer = build_instance_buffer(server, name, instances)
         buffer_view = server.create_component(
@@ -241,31 +281,38 @@ def build_entity(server: rigatoni.Server, geometry: rigatoni.Geometry, instances
     else:
         instance = None
 
+    # Create render rep and entity from geometry and instances
     rep = rigatoni.RenderRepresentation(mesh=geometry.id, instances=instance)
-
     entity = server.create_component(rigatoni.Entity, name=name, render_rep=rep)
     
     return entity
-
-
-def padded(lst: list):
-    lst = list(lst)
-    if len(lst) < 4:
-        lst += [0.0] * (4 - len(lst))
-    return lst
 
 
 def create_instances(
     positions: list[rigatoni.Vec3] = [], 
     colors: list[rigatoni.Vec4] = [], 
     rotations: list[rigatoni.Vec4] = [], 
-    scales: list[rigatoni.Vec3] = []):
+    scales: list[rigatoni.Vec3] = []) -> list[rigatoni.Mat4]:
     """Create new instances for an entity
     
     All lists are optional and will be filled with defaults
     By default one instance is created at least
     Lists are padded out to 4 values
+
+    Args:
+        positions (list[Vec3]): positions for each instance
+        colors (list[Vec4]): Colors for each instance
+        rotations (list[Vec4]): Rotations for each instance
+        scales (list[Vec3]): Scales for each instance
     """
+
+    def padded(lst: list):
+        """Helper to pad the lists"""
+
+        lst = list(lst)
+        if len(lst) < 4:
+            lst += [0.0] * (4 - len(lst))
+        return lst
 
     # If no inputs specified create one default instance
     if not (positions or colors or rotations or scales):
@@ -287,7 +334,16 @@ def create_instances(
 
 
 def update_entity(server: rigatoni.Server, entity: rigatoni.Entity, geometry: rigatoni.Geometry=None, instances: list=None):
+    """Update an entity with new instances or geometry
     
+    Args:
+        server (Server): server with entity to update
+        entity (Entity): Entity to be updated
+        geometry (Geometry): Optional new geometry if that is being changed
+        instances (list[Mat4]): Optional new instances if that is changed
+    """
+
+    # Get name from entity if applicable
     name = entity.name if entity.name else None
 
     # Get render rep and ensure entity is working with geometry
@@ -295,6 +351,7 @@ def update_entity(server: rigatoni.Server, entity: rigatoni.Entity, geometry: ri
     if not old_rep:
         raise Exception("Entity isn't renderable")
 
+    # Set geometry id based on whether there is new geometry or not
     if geometry:
         mesh = geometry.id
     else:
@@ -320,7 +377,7 @@ def update_entity(server: rigatoni.Server, entity: rigatoni.Entity, geometry: ri
     entity.render_rep = rep
     entity = server.update_component(entity)
 
-    # Clean up with deletes
+    # Clean up old components with deletes
     if instances:
         server.delete_component(server.components[old_rep.instances.view].source_buffer)
         server.delete_component(old_rep.instances.view)
@@ -331,29 +388,51 @@ def update_entity(server: rigatoni.Server, entity: rigatoni.Entity, geometry: ri
 
 
 def add_instances(server: rigatoni.Server, entity: rigatoni.Entity, instances: list):
+    """Add instances to an existing entity
     
+    Args:
+        server (Server): server with entity to update
+        entity (Entity): entity to be updated
+        instances (list[Mat4]): new instances to be added, can be generated using 
+            create_instances()
+    """
+
+    # Ensure we're working with an renderable entity
     try:
         rep = entity.render_rep
     except:
         raise Exception("Entity isn't renderable")
 
-    if rep:
-        old_view: rigatoni.BufferView = server.components[rep.instances.view]
-        old_buffer: rigatoni.Buffer = server.components[old_view.source_buffer]
-        old_instances = np.frombuffer(old_buffer.inline_bytes, dtype=np.single)
-        print(f"Old instances from buffer: {old_instances}")
-        combined = np.append(old_instances, instances)
+    # Get old instance buffer from entity's render rep
+    old_view: rigatoni.BufferView = server.components[rep.instances.view]
+    old_buffer: rigatoni.Buffer = server.components[old_view.source_buffer]
+    old_instances = np.frombuffer(old_buffer.inline_bytes, dtype=np.single)
+
+    # Combine new and old instances
+    combined = np.append(old_instances, instances)
 
     update_entity(server, entity, instances=combined.tolist())
 
 
-# Mesh Importing
+
+#---------------------------------- Mesh Importing ----------------------------------#
+
 def meshlab_load(server: rigatoni.Server, byte_server: ByteServer, file, 
     material: rigatoni.Material, mesh_name: Optional[str]=None):
+    """Use pymeshlab to load types unsupported by meshio
+
+    This method is only called from geometry_from_mesh if needed
+    
+    Args:   
+        server (Server): server to load geometry onto
+        byte_server (ByteServer): server to support URI bytes if needed
+        file (str, path): file to load mesh from
+        material (Material): material to use in geometry
+        mesh_name (str): optional name
+    """
     import pymeshlab
     
     ms = pymeshlab.MeshSet()
-
     ms.load_new_mesh(file)
     mesh = ms.current_mesh()
     #mesh.compute_normal_per_vertex("Simple Average")
@@ -362,8 +441,8 @@ def meshlab_load(server: rigatoni.Server, byte_server: ByteServer, file,
     vertices = mesh.vertex_matrix().tolist()
     indices = mesh.face_matrix().tolist()
     normals = mesh.vertex_normal_matrix().tolist()
-    tangents = None
-    textures = None
+    tangents = None # TBD
+    textures = None # TBD
     colors = mesh.vertex_color_array().tolist()
 
     # Create patch / geometry for point geometry
@@ -383,25 +462,6 @@ def meshlab_load(server: rigatoni.Server, byte_server: ByteServer, file,
     return geometry
 
 
-def get_point_attr(mesh, attr: str):
-    """Helper to get attribute from mesh object"""
-
-    data = mesh.point_data.get(attr)
-    try:
-        return data.tolist()
-    except:
-        return data
-
-
-def get_triangles(mesh):
-    """Helper to get attribute from mesh object"""
-
-    for cell in mesh.cells:
-        if cell.type == "triangle":
-            return cell.data.tolist()
-    return None
-
-
 def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Material, 
     mesh_name: Optional[str]=None, byte_server: ByteServer=None):
     """Construct geometry from mesh file
@@ -414,6 +474,24 @@ def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Materia
         mesh = meshio.read(file)
     except:
         return meshlab_load(server, byte_server, file, material, mesh_name) 
+
+    # Define Meshio helper functions 
+    def get_point_attr(mesh, attr: str):
+        """Helper to get attribute from mesh object"""
+
+        data = mesh.point_data.get(attr)
+        try:
+            return data.tolist()
+        except:
+            return data
+
+    def get_triangles(mesh):
+        """Helper to get triangles from mesh object"""
+
+        for cell in mesh.cells:
+            if cell.type == "triangle":
+                return cell.data.tolist()
+        return None
     
     vertices = mesh.points.tolist()
     indices = get_triangles(mesh)
@@ -442,7 +520,14 @@ def geometry_from_mesh(server: rigatoni.Server, file, material: rigatoni.Materia
     
 
 def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_name: str, byte_server: ByteServer=None):
-    """Interface to export noodles geometry to mesh file"""
+    """Export noodles geometry to mesh file
+    
+    Args:
+        server (Server): server to get components from
+        geometry (Geometry): geometry to export
+        new_file_name (str): name for file being created
+        byte_server (ByteServer): server storing bytes if applicable 
+    """
 
     points = []
     indices = []
@@ -462,15 +547,14 @@ def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_n
             except:
                 raise Exception("No byte server specified for uri byte mesh")
 
-        # Get indicies
+        # Reconstruct indicies from buffer
         raw_indices = np.frombuffer(bytes, dtype=FORMAT_MAP[index.format], count=index.count, offset=index.offset)
         grouped = [list(x) for x in zip(*(iter(raw_indices),) * 3)]
-        indices.extend(grouped)
+        indices.extend(grouped)        
 
-        # Get Attributes, positions and any others
-        attribute_bytes  = bytes[:index.offset]
-
+        # Reconstruct points and attributes from buffer
         i = 0
+        attribute_bytes  = bytes[:index.offset]
         while i < len(attribute_bytes):
             for attribute in patch.attributes:
                 format = attribute.format
@@ -484,16 +568,16 @@ def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_n
                     point_data.setdefault(attr_name,[]).append(attr_data) 
             print(f"{i}/{len(attribute_bytes)}")
 
+    # Construct mesh and export
     mesh = meshio.Mesh(
         points,
         [("triangle", indices)],
-        point_data = point_data
-    )
-
+        point_data = point_data)
     mesh.write(new_file_name)
 
 
 def normal_generator(vertices: list[list], indices: list[list]):
-
+    """TODO"""
+    
     normals = []
     return normals

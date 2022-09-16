@@ -2,34 +2,60 @@ import socket
 import re
 import threading
 
-import rigatoni
-
-from rigatoni.noodle_objects import BufferID
-
 
 class ByteServer(object):
+    """Server to Host URI Bytes
+    
+    Attributes:
+        host (str): IP address for server
+        port (int): port server is listening on
+        socket (socket): socket connection 
+        buffers (dict): mapping tag to buffer
+        next_tag (int): next available tag for a buffer
+        url (str): base url to reach server without tag
+        thread (Thread): background thread server is running in
+        running (bool): flag indicating whether server is running
+    """
 
 
-    def __init__(self, host: str='0.0.0.0', port: int=8000):
-        self.host = host
+    def __init__(self, port: int=8000):
+        """Constructor
+        
+        Args:
+            port (int): port to listen on
+        """
+
+        name = socket.gethostname()
+        self.host = socket.gethostbyname(f"{name}.local") 
+        # supposed to work without this local thing, but I had to add so 
+        # it would match the sharing name in system preferences
         self.port = port
         self.socket = None
         self.buffers = {}
         self.next_tag = 0
-        self.url = f"http://{host}:{port}"
-        self.thread = threading.Thread(target=self.run, args=())
+        self.url = f"http://{self.host}:{port}"
 
+        self.thread = threading.Thread(target=self.run, args=())
         self.thread.start()
+        self.running = True
 
 
     def get_tag(self):
+        """Helper to get next tag"""
+
         tag = self.next_tag
         self.next_tag += 1
         return str(tag)
 
 
     def get_buffer(self, uri: str):
-        """Helper to get bytes for a uri"""
+        """Helper to get bytes for a uri
+        
+        Mostly used in geometry creation for exporting as of right now
+
+        Args:
+            uri (str): uri for bytes
+        """
 
         m = re.search(f'(?<={self.port}\/).+\Z', uri)
         if m:
@@ -42,25 +68,32 @@ class ByteServer(object):
 
 
     def run(self):
+        """Main loop to run in thread
+        
+        Runs the server and listens for byte requests
+        Uses HTTP protocol 
+        """
 
         # Create socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((self.host, self.port))
 
+        print(f"IP Address: {server_socket.getsockname()}")
+
         self.socket = server_socket
 
         server_socket.listen(1)
         print(f'Listening on port {self.port} ...')
 
-        while True:
+        while self.running:
             # Wait for client connections
             print("Waiting for connection...")
             client_connection, client_address = server_socket.accept()
 
             # Get the client request
             request = client_connection.recv(1024).decode()
-            print(request)
+            print(f"Request: {request}")
 
             # Try to get tag from request with regex
             m = re.search('(?<=GET \/)(.+?)(?= HTTP)', request)
@@ -75,9 +108,16 @@ class ByteServer(object):
             client_connection.sendall(response)
             client_connection.close()
 
+        # Clean up and close socket
+        self.socket.close()
+
     
     def add_buffer(self, buffer) -> str:
-        """Add buffer to server and return url to reach it"""
+        """Add buffer to server and return url to reach it
+        
+        Args:
+            buffer (bytes): bytes to add as buffer
+        """
 
         tag = self.get_tag()
         self.buffers[tag] = buffer
@@ -88,15 +128,18 @@ class ByteServer(object):
 
 
     def shutdown(self):
-        if self.socket:
-            self.socket.close()
+        """Stop running thread"""
+
+        self.running = False
+        self.thread.join()
 
 
 def main():
+    """Main method for testing"""
 
-    server = ByteServer(port=50000)
-    server.add_buffer(b'TEST')
-
+    server = ByteServer(port=60000)
+    server.add_buffer('HTTP/1.0 200 OK\n\nTEST TEST TEST'.encode())
+    server.add_buffer(b'TESTING BYTES')
 
 
 if __name__ == "__main__":
