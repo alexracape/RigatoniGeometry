@@ -74,19 +74,19 @@ def create_spheres(server: rigatoni.Server, context, *args):
         material = material.id,
         colors = colors
     )
-    patches.append(rigatoni.geometry.build_geometry_patch(server, name, patch_info))
+    patches.append(geo.build_geometry_patch(server, name, patch_info))
 
     # Create geometry using patches
     sphere = server.create_component(rigatoni.Geometry, name=name, patches=patches)
 
     # Set instances and create an entity
-    instances = rigatoni.geometry.create_instances(
+    instances = geo.create_instances(
         positions=[(1,1,1,1),(2,2,2,2)],
         colors=[(1,.5,.5,1)],
         rotations=[(45, 20, 0, 0)]
     )
-    entity = rigatoni.geometry.build_entity(server, geometry=sphere, instances=instances)
-    geo.export_mesh(server, sphere, "test_sphere.vtk")
+    entity = geo.build_entity(server, geometry=sphere, instances=instances)
+    geo.export_mesh(server, sphere, "test_sphere.obj")
     return 1
 
 
@@ -94,8 +94,8 @@ def create_new_instance(server: rigatoni.Server, context, entity_slot, entity_ge
     """Method to test instance updating"""
     
     entity = server.components[rigatoni.EntityID(entity_slot, entity_gen)]
-    new_instance = rigatoni.geometry.create_instances(position, color, rotation, scale)
-    rigatoni.geometry.add_instances(server, entity, new_instance)
+    new_instance = geo.create_instances(position, color, rotation, scale)
+    geo.add_instances(server, entity, new_instance)
 
 
 def normalize_df(df: pd.DataFrame):

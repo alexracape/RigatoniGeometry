@@ -68,6 +68,10 @@ def set_up_attributes(input: GeometryPatchInput):
             textures, and colors
     """
 
+    # Generate normals if not indicated in input
+    if not input.normals:
+        input.normals = generate_normals(input.vertices, input.indices)
+
     # Add attribute info based on the input lists
     attribute_info = [] 
     position = AttributeInput(
@@ -77,13 +81,12 @@ def set_up_attributes(input: GeometryPatchInput):
     )
     attribute_info.append(position)
 
-    if input.normals:
-        normal = AttributeInput(
-            semantic = "NORMAL",
-            format = "VEC3",
-            normalized = False,
-        )
-        attribute_info.append(normal)
+    normal = AttributeInput(
+        semantic = "NORMAL",
+        format = "VEC3",
+        normalized = False,
+    )
+    attribute_info.append(normal)
 
     if input.tangents:
         tangent = AttributeInput(
@@ -154,7 +157,7 @@ def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInp
 
     # Create buffer component using uri bytes if needed
     size = len(buffer_bytes)
-    if size > 1000:
+    if size > 10000:
         print(f"Large Mesh: Using URI Bytes")
         uri = byte_server.add_buffer(buffer_bytes)
         buffer = server.create_component(
@@ -182,7 +185,7 @@ def build_geometry_patch(server: rigatoni.Server, name: str, input: GeometryPatc
         server (Server): server to create components on
         name (str): name for the components
         input (GeometryPatch): input lists with data to create the patch
-        byte_server (ByteServer): optional server to use if mesh is larger than 1Kb
+        byte_server (ByteServer): optional server to use if mesh is larger than 10Kb
     """
 
     # Set up some constants
@@ -576,8 +579,32 @@ def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_n
     mesh.write(new_file_name)
 
 
-def normal_generator(vertices: list[list], indices: list[list]):
+def generate_normals(vertices: list[list], indices: list[list]):
     """TODO"""
     
-    normals = []
-    return normals
+    # Idea: go through all the triangles, and calculate normal for each one and attach average to each vertex
+
+    normals = {}
+    averages = []
+    for triangle in indices:
+
+        # Calculate the normal
+        v1, v2, v3 = triangle
+        p1, p2, p3 = vertices[v1 - 1], vertices[v2 - 1], vertices[v3 - 1]
+        vector1 = np.array([p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2]]) #p1 -> p2
+        vector2 = np.array([p3[0]-p1[0], p3[1]-p1[1], p3[2]-p1[2]]) #p1 -> p3
+        normal = np.cross(vector1, vector2)
+
+        # Attach normal to each vertex
+        for vertex in triangle:
+            normals.setdefault(vertex, []).append(normal) 
+
+    print(f"Final Normals: {normals}")
+
+    # Find averages
+    for vertex in normals:
+        #averages.append(np.mean(normals[vertex]))
+        # How to take average of vectors
+        pass
+
+    return averages
