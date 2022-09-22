@@ -83,7 +83,6 @@ def create_spheres(server: rigatoni.Server, context, *args):
     instances = geo.create_instances(
         positions=[(1,1,1,1),(2,2,2,2)],
         colors=[(1,.5,.5,1)],
-        rotations=[(45, 20, 0, 0)]
     )
     entity = geo.build_entity(server, geometry=sphere, instances=instances)
     geo.export_mesh(server, sphere, "test_sphere.obj")

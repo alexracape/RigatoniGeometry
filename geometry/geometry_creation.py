@@ -1,4 +1,8 @@
 """Module for assisting with the creation of geometry objects"""
+from decimal import Decimal
+from math import sqrt
+from collections import deque
+from statistics import mean
 from typing import Optional, Tuple
 import numpy as np
 import meshio
@@ -157,7 +161,7 @@ def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInp
 
     # Create buffer component using uri bytes if needed
     size = len(buffer_bytes)
-    if size > 10000:
+    if size > 1000000:
         print(f"Large Mesh: Using URI Bytes")
         uri = byte_server.add_buffer(buffer_bytes)
         buffer = server.create_component(
@@ -579,32 +583,93 @@ def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_n
     mesh.write(new_file_name)
 
 
+def dot_product(v1, v2):
+    """Helper to take dot product"""
+    product = 0
+    for c1, c2 in zip(v1, v2):
+        product += (round(c1, 5) * round(c2, 5))
+    return product
+
+
 def generate_normals(vertices: list[list], indices: list[list]):
     """TODO"""
     
     # Idea: go through all the triangles, and calculate normal for each one and attach average to each vertex
 
     normals = {}
-    averages = []
+    adjacents = {}
     for triangle in indices:
 
         # Calculate the normal
         v1, v2, v3 = triangle
-        p1, p2, p3 = vertices[v1 - 1], vertices[v2 - 1], vertices[v3 - 1]
+        p1, p2, p3 = vertices[v1], vertices[v2], vertices[v3]
         vector1 = np.array([p2[0]-p1[0], p2[1]-p1[1], p2[2]-p1[2]]) #p1 -> p2
         vector2 = np.array([p3[0]-p1[0], p3[1]-p1[1], p3[2]-p1[2]]) #p1 -> p3
         normal = np.cross(vector1, vector2)
 
         # Attach normal to each vertex
         for vertex in triangle:
-            normals.setdefault(vertex, []).append(normal) 
+            existing_normals = normals.get(vertex)
 
-    print(f"Final Normals: {normals}")
+            # Add in new normals with matching orientation
+            if existing_normals:
+                if dot_product(existing_normals[0], normal) < 0:
+                    existing_normals.append([-x for x in normal])
+                    print(f"Mismatching triangle normals @ {vertex}")
+                else:
+                    existing_normals.append(normal)
+            else:
+                normals[vertex] = [normal]
+            
+            # Mark other vertices in triangle as adjacent
+            other_vert = [x for x in triangle if x != vertex]
+            adjacents.setdefault(vertex, set()).update(other_vert) 
 
     # Find averages
-    for vertex in normals:
-        #averages.append(np.mean(normals[vertex]))
-        # How to take average of vectors
-        pass
+    for vertex, normal_list in normals.items():
 
-    return averages
+        # Calculate average
+        average_normal = []
+        for component in zip(*normal_list):
+            average_normal.append(mean(component))
+
+        # Normalize and set normal to keep track of final average 
+        length = sqrt((average_normal[0]**2) + (average_normal[1]**2) + (average_normal[2]**2))
+        normals[vertex] = [x / length for x in average_normal]
+
+    # Orient normals to match
+    center = [mean(x) for x in zip(*vertices)]
+    visited = set()
+    starting_index = indices[0][0]
+    discovered = deque() # (index, neighbor)
+    discovered.append((starting_index, starting_index))
+    while discovered:
+        
+        current_index, neighbor = discovered.popleft()
+        dot = dot_product(normals[current_index], normals[neighbor])
+        if dot < 0: # Flip vector
+            normals[current_index] =[-x for x in normals[current_index]]
+
+        for adjacent in adjacents[current_index]:
+            if adjacent not in visited and adjacent not in discovered:
+                discovered.append((adjacent, current_index))
+
+        visited.add(current_index)
+
+    # Find number pointing towards center
+    num_inward = 0
+    center_normals = {}
+    for index, normal in normals.items():
+        center_vector = [x - y for x, y in zip(vertices[index], center)]
+        center_normals[index] = center_vector
+        if np.dot(normal, center_vector) < 0:
+            num_inward += 1
+
+    # If majority are inward invert
+    if num_inward > (len(vertices) / 2):
+        for normal in normals.values():
+            normal = [-x for x in normal]
+
+    print(f"Finished getting normals...\nNum Inward: {num_inward}")
+    return [normals[i] for i in range(len(vertices))]
+    return [center_normals[i] for i in range(len(vertices))]
