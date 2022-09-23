@@ -63,6 +63,7 @@ def create_spheres(server: rigatoni.Server, context, *args):
     """Test method to create two spheres"""
     
     name = "Test Sphere"
+    uri_server = geo.ByteServer(port=40000)
     material = server.create_component(rigatoni.Material, name="Test Material")
 
     # Create Patch
@@ -74,7 +75,7 @@ def create_spheres(server: rigatoni.Server, context, *args):
         material = material.id,
         colors = colors
     )
-    patches.append(geo.build_geometry_patch(server, name, patch_info))
+    patches.append(geo.build_geometry_patch(server, name, patch_info, uri_server))
 
     # Create geometry using patches
     sphere = server.create_component(rigatoni.Geometry, name=name, patches=patches)
@@ -85,7 +86,7 @@ def create_spheres(server: rigatoni.Server, context, *args):
         colors=[(1,.5,.5,1)],
     )
     entity = geo.build_entity(server, geometry=sphere, instances=instances)
-    geo.export_mesh(server, sphere, "test_sphere.obj")
+    geo.export_mesh(server, sphere, "test_sphere.obj", uri_server)
     return 1
 
 

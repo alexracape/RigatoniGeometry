@@ -99,13 +99,17 @@ class ByteServer(object):
             if m:
                 tag = m.group(0)
                 bytes = self.buffers[tag]
-                response = f'HTTP/1.0 200 OK\n\n{bytes}'
+                # response = f'HTTP/1.0 200 OK\n\n{bytes}'
+                header = f'HTTP/1.0 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {len(bytes)}\n\n'
+                response = bytearray(header.encode()) + bytes
             else:
-                response = f'HTTP/1.0 500 FAIL'
+                header = f'HTTP/1.0 500 FAIL'
+                response = header.encode()
 
             # Send HTTP response
-            
-            client_connection.sendall(response.encode())
+            # client_connection.sendall(response.encode())
+            print(f'Response:\n{response}')
+            client_connection.sendall(response)
             client_connection.close()
 
         # Clean up and close socket

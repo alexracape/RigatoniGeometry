@@ -12,7 +12,7 @@ import rigatoni
 from .geometry_objects import AttributeInput, GeometryPatchInput
 from .byte_server import ByteServer
 
-INLINE_LIMIT = 100000000000
+INLINE_LIMIT = 100
 
 SIZES = {
     # in bytes
