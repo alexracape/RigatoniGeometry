@@ -12,6 +12,8 @@ import rigatoni
 from .geometry_objects import AttributeInput, GeometryPatchInput
 from .byte_server import ByteServer
 
+INLINE_LIMIT = 100000000000
+
 SIZES = {
     # in bytes
     "U8": 1,
@@ -161,7 +163,7 @@ def build_geometry_buffer(server: rigatoni.Server, name, input: GeometryPatchInp
 
     # Create buffer component using uri bytes if needed
     size = len(buffer_bytes)
-    if size > 1000000:
+    if size > INLINE_LIMIT:
         print(f"Large Mesh: Using URI Bytes")
         uri = byte_server.add_buffer(buffer_bytes)
         buffer = server.create_component(
@@ -573,7 +575,6 @@ def export_mesh(server: rigatoni.Server, geometry: rigatoni.Geometry, new_file_n
                     points.append(attr_data)
                 else:
                     point_data.setdefault(attr_name,[]).append(attr_data) 
-            print(f"{i}/{len(attribute_bytes)}")
 
     # Construct mesh and export
     mesh = meshio.Mesh(
@@ -609,6 +610,7 @@ def generate_normals(vertices: list[list], indices: list[list]):
 
         # Attach normal to each vertex
         for vertex in triangle:
+        
             existing_normals = normals.get(vertex)
 
             # Add in new normals with matching orientation
@@ -625,6 +627,8 @@ def generate_normals(vertices: list[list], indices: list[list]):
             other_vert = [x for x in triangle if x != vertex]
             adjacents.setdefault(vertex, set()).update(other_vert) 
 
+    print(f"Vertices {len(vertices)} vs. Normals {len(normals)}")
+
     # Find averages
     for vertex, normal_list in normals.items():
 
@@ -638,6 +642,8 @@ def generate_normals(vertices: list[list], indices: list[list]):
         normals[vertex] = [x / length for x in average_normal]
 
     # Orient normals to match
+    print(f"Vertices {len(vertices)} vs. Normals {len(normals)}")
+
     center = [mean(x) for x in zip(*vertices)]
     visited = set()
     starting_index = indices[0][0]
@@ -651,17 +657,16 @@ def generate_normals(vertices: list[list], indices: list[list]):
             normals[current_index] =[-x for x in normals[current_index]]
 
         for adjacent in adjacents[current_index]:
-            if adjacent not in visited and adjacent not in discovered:
+            if adjacent not in visited and (adjacent, current_index) not in discovered:
                 discovered.append((adjacent, current_index))
 
         visited.add(current_index)
 
+    print(f"Vertices {len(vertices)} vs. Normals {len(normals)}")
     # Find number pointing towards center
     num_inward = 0
-    center_normals = {}
     for index, normal in normals.items():
         center_vector = [x - y for x, y in zip(vertices[index], center)]
-        center_normals[index] = center_vector
         if np.dot(normal, center_vector) < 0:
             num_inward += 1
 
@@ -671,5 +676,6 @@ def generate_normals(vertices: list[list], indices: list[list]):
             normal = [-x for x in normal]
 
     print(f"Finished getting normals...\nNum Inward: {num_inward}")
-    return [normals[i] for i in range(len(vertices))]
+    print(f"Vertices {len(vertices)} vs. Normals {len(normals)}")
+    return [normals.get(i, [0,0,0]) for i in range(len(vertices))]
     return [center_normals[i] for i in range(len(vertices))]

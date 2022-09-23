@@ -36,9 +36,8 @@ class ByteServer(object):
         self.url = f"http://{self.host}:{port}"
 
         self.thread = threading.Thread(target=self.run, args=())
-        self.thread.start()
         self.running = True
-
+        self.thread.start()
 
     def get_tag(self):
         """Helper to get next tag"""
@@ -99,13 +98,14 @@ class ByteServer(object):
             m = re.search('(?<=GET \/)(.+?)(?= HTTP)', request)
             if m:
                 tag = m.group(0)
+                bytes = self.buffers[tag]
+                response = f'HTTP/1.0 200 OK\n\n{bytes}'
             else:
-                raise Exception("Invalid HTTP Request")
+                response = f'HTTP/1.0 500 FAIL'
 
             # Send HTTP response
-            response = self.buffers[tag]
-            print(f"Response:\n{response}")
-            client_connection.sendall(response)
+            
+            client_connection.sendall(response.encode())
             client_connection.close()
 
         # Clean up and close socket
@@ -122,7 +122,7 @@ class ByteServer(object):
         tag = self.get_tag()
         self.buffers[tag] = buffer
         url = f"{self.url}/{tag}"
-        print(f"Buffer URL: {url}")
+        print(f"Adding Buffer: {url}")
 
         return url
 
